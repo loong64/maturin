@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        default: 'latest'
+        description: 'Package version'
+        type: string
+        required: true
+  schedule:
+    - cron: '0 17 * * *'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      build: ${{ steps.check-release.outputs.build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Get Version
+        id: get-version
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            version="latest"
+          else
+            version=${{ github.event.inputs.version }}
+          fi
+          if [ "${version}" = "latest" ]; then
+            version=$(curl -s "https://api.github.com/repos/PyO3/maturin/releases/latest" | jq -r .tag_name)
+          fi
+          if [ -z "${version}" ] || [ "$version" = "null" ]; then
+            echo "Error: version is empty"
+            exit 1
+          fi
+          echo "version=${version}" >> $GITHUB_ENV
+          echo "version=${version}" >> $GITHUB_OUTPUT
+      - name: Check Release
+        id: check-release
+        run: |
+          gh release view ${version} -R ${{ github.repository }} >/dev/null 2>&1 || echo "create=1" >> $GITHUB_OUTPUT
+          gh release view ${version} -R ${{ github.repository }} | grep maturin-loongarch64-unknown-linux-gnu.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create tag
+        if : steps.check-release.outputs.create == '1'
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add .
+          git commit -m "Release ${version}" || true
+          git tag ${version}
+          git push origin ${version} || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create release
+        if : steps.check-release.outputs.create == '1'
+        run: |
+          gh release create ${version} -R ${{ github.repository }} --title ${version} --notes "**Full Changelog**: [${version}](https://github.com/PyO3/maturin/releases/tag/${version})"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-musl:
+    name: Build ${{ matrix.platform.target }}
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.build == '1'
+    env:
+      version: ${{ needs.check-version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - target: "loongarch64-unknown-linux-gnu"
+            image: "manylinux_2_36-cross:loongarch64"
+            compatibility: "manylinux_2_36"
+    container:
+      image: docker://ghcr.io/rust-cross/${{ matrix.platform.image }}
+      env:
+        RUSTUP_HOME: /root/.rustup
+        CARGO_HOME: /root/.cargo
+        CARGO_PROFILE_RELEASE_LTO: "${{ matrix.platform.lto || 'fat' }}"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: PyO3/maturin
+          ref: ${{ env.version }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+      - name: Build wheel
+        run: |
+          sudo python3 -m pip install -U --pre maturin
+          maturin build --release -b bin -o dist \
+            --target ${{ matrix.platform.target }} \
+            --compatibility ${{ matrix.platform.compatibility }} \
+            --features password-storage
+      - name: Archive binary
+        run: tar czvf target/release/maturin-${{ matrix.platform.target }}.tar.gz -C target/${{ matrix.platform.target }}/release maturin
+      - name: Upload wheels
+        run: |
+          pip install twine==6.0.1
+          for file in dist/*.whl; do
+            twine upload --repository-url https://gitlab.com/api/v4/projects/65746188/packages/pypi $file || true
+          done
+        env:
+          TWINE_USERNAME: ${{ github.repository_owner }}
+          TWINE_PASSWORD: ${{ secrets.GL_TOKEN }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ github.repository }}
+          tag_name: ${{ env.version }}
+          files: target/release/*.tar.gz
