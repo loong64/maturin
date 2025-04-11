@@ -77,8 +77,11 @@ jobs:
           - target: "loongarch64-unknown-linux-gnu"
             image: "manylinux_2_36-cross:loongarch64"
             compatibility: "manylinux_2_36"
+          - target: "loongarch64-unknown-linux-musl"
+            image: "musllinux_1_2-cross:loongarch64"
+            compatibility: "musllinux_1_2"
     container:
-      image: docker://ghcr.io/rust-cross/${{ matrix.platform.image }}
+      image: docker://ghcr.io/loong64/${{ matrix.platform.image }}
       env:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
