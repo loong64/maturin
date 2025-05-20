@@ -87,6 +87,7 @@ jobs:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
         CARGO_PROFILE_RELEASE_LTO: "${{ matrix.platform.lto || 'fat' }}"
+        CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,6 +98,7 @@ jobs:
           targets: ${{ matrix.platform.target }}
       - name: Build wheel
         run: |
+          curl -sL https://github.com/loong64/maturin/raw/refs/heads/main/patch-loong64.patch | patch -p1
           sudo python3 -m pip install -U --pre maturin
           maturin build --release -b bin -o dist \
             --target ${{ matrix.platform.target }} \
