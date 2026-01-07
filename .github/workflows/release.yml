@@ -82,7 +82,7 @@ jobs:
             image: "musllinux_1_2-cross:loongarch64"
             compatibility: "musllinux_1_2"
     container:
-      image: docker://ghcr.io/loong64/${{ matrix.platform.image }}
+      image: docker://ghcr.io/rust-cross/${{ matrix.platform.image }}
       env:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
@@ -93,6 +93,10 @@ jobs:
         with:
           repository: PyO3/maturin
           ref: ${{ env.version }}
+      - name: Clean cargo
+        run: |
+          # https://github.com/rust-lang/rustup/issues/1480
+          rm -rf /root/.rustup /root/.cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
