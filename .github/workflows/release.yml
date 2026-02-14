@@ -14,13 +14,13 @@ on:
 jobs:
   check-version:
     name: Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       version: ${{ steps.get-version.outputs.version }}
       build: ${{ steps.check-release.outputs.build }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get Version
         id: get-version
         run: |
@@ -89,7 +89,7 @@ jobs:
         CARGO_PROFILE_RELEASE_LTO: "${{ matrix.platform.lto || 'fat' }}"
         CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+crt-static
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: PyO3/maturin
           ref: ${{ env.version }}
@@ -102,7 +102,6 @@ jobs:
           targets: ${{ matrix.platform.target }}
       - name: Build wheel
         run: |
-          curl -sL https://github.com/loong64/maturin/raw/refs/heads/main/patch-loong64.patch | patch -p1
           sudo python3 -m pip install -U --pre maturin
           maturin build --release -b bin -o dist \
             --target ${{ matrix.platform.target }} \
