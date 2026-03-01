@@ -75,40 +75,44 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - target: "loongarch64-unknown-linux-gnu"
-            image: "manylinux_2_36-cross:loongarch64"
-            compatibility: "manylinux_2_36"
           - target: "loongarch64-unknown-linux-musl"
-            image: "musllinux_1_2-cross:loongarch64"
-            compatibility: "musllinux_1_2"
+            image: "rust-musl-cross:loongarch64-musl"
+            compatibility: "manylinux_2_36 musllinux_1_2"
+            rustflags: "-C target-feature=+crt-static"
     container:
       image: docker://ghcr.io/rust-cross/${{ matrix.platform.image }}
       env:
         RUSTUP_HOME: /root/.rustup
         CARGO_HOME: /root/.cargo
         CARGO_PROFILE_RELEASE_LTO: "${{ matrix.platform.lto || 'fat' }}"
-        CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: -C target-feature=+crt-static
     steps:
       - uses: actions/checkout@v6
         with:
           repository: PyO3/maturin
           ref: ${{ env.version }}
-      - name: Clean cargo
-        run: |
-          # https://github.com/rust-lang/rustup/issues/1480
-          rm -rf /root/.rustup /root/.cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: stable
           targets: ${{ matrix.platform.target }}
-      - name: Build wheel
+      - name: Install uv
+        uses: astral-sh/setup-uv@eac588ad8def6316056a12d4907a9d4d84ff7a3b # v7
+        with:
+          # No need to take cache size for maturin in the release pipeline
+          enable-cache: "false"
+      - name: Install patchelf
         run: |
-          sudo python3 -m pip install -U --pre maturin
-          maturin build --release -b bin -o dist \
+          pip install patchelf
+      - name: Build wheel
+        env:
+          RUSTFLAGS: ${{ matrix.platform.rustflags || '' }}
+        run: |
+          uvx maturin build --release -b bin -o dist \
             --target ${{ matrix.platform.target }} \
+            ${{ !contains(fromJson('["loongarch64-unknown-linux-musl", "riscv64gc-unknown-linux-musl"]'), matrix.platform.target) && '--compatibility pypi' || '' }} \
             --compatibility ${{ matrix.platform.compatibility }} \
             --features password-storage
       - name: Archive binary
-        run: tar czvf target/release/maturin-${{ matrix.platform.target }}.tar.gz -C target/${{ matrix.platform.target }}/release maturin
+        run: tar czvf target/release/maturin-${{ matrix.platform.target }}.tar.gz -C target/maturin maturin
       - name: Upload wheels
         run: |
           pip install twine==6.0.1
