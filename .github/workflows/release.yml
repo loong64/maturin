@@ -109,7 +109,7 @@ jobs:
             --compatibility ${{ matrix.platform.compatibility }} \
             --features password-storage
       - name: Archive binary
-        run: tar czvf target/release/maturin-${{ matrix.platform.target }}.tar.gz -C target/maturin maturin
+        run: tar czvf target/release/maturin-${{ matrix.platform.target }}.tar.gz -C target/${{ matrix.platform.target }}/release maturin
       - name: Upload wheels
         run: |
           pip install twine==6.0.1
